@@ -1,19 +1,20 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.datasets import fetch_california_housing
 from sklearn.ensemble import RandomForestRegressor
 
 # ---------------------------
-# CONFIG
+# PAGE CONFIG
 # ---------------------------
-st.set_page_config(page_title="House Price App", layout="wide")
+st.set_page_config(page_title="🏠 House Price AI", layout="wide")
 
-st.title("🏠 California House Price Prediction App")
-st.markdown("Predict house prices using Machine Learning")
+st.title("🏠 AI House Price Predictor")
+st.markdown("### Smart real estate valuation powered by Machine Learning")
 
 # ---------------------------
-# LOAD DATA (with caching)
+# LOAD DATA
 # ---------------------------
 @st.cache_data
 def load_data():
@@ -25,11 +26,22 @@ def load_data():
 X, y = load_data()
 
 # ---------------------------
-# SIDEBAR INPUTS
+# MODEL
 # ---------------------------
-st.sidebar.header("⚙️ Input Parameters")
+@st.cache_resource
+def train_model():
+    model = RandomForestRegressor(n_estimators=150)
+    model.fit(X, y)
+    return model
 
-def user_input_features():
+model = train_model()
+
+# ---------------------------
+# SIDEBAR
+# ---------------------------
+st.sidebar.title("⚙️ Customize House")
+
+def user_input():
     data = {}
     for col in X.columns:
         data[col] = st.sidebar.slider(
@@ -40,90 +52,112 @@ def user_input_features():
         )
     return pd.DataFrame(data, index=[0])
 
-df = user_input_features()
-
-# ---------------------------
-# MODEL (cached)
-# ---------------------------
-@st.cache_resource
-def train_model():
-    model = RandomForestRegressor(n_estimators=100)
-    model.fit(X, y)
-    return model
-
-model = train_model()
+df = user_input()
 
 prediction = model.predict(df)[0]
+price = prediction * 100000
 
 # ---------------------------
-# MAIN LAYOUT
+# TOP METRICS
 # ---------------------------
-col1, col2 = st.columns(2)
+col1, col2, col3 = st.columns(3)
 
-with col1:
-    st.subheader("📥 Input Data")
-    st.write(df)
+col1.metric("💰 Predicted Price", f"${price:,.0f}")
+col2.metric("📊 Dataset Avg", f"${y.mean()*100000:,.0f}")
+col3.metric("📈 Difference", f"${price - y.mean()*100000:,.0f}")
 
-with col2:
-    st.subheader("💰 Prediction")
-
-    price_usd = prediction * 100000
-    st.success(f"Estimated price: ${price_usd:,.2f}")
+st.divider()
 
 # ---------------------------
-# FEATURE IMPORTANCE
+# TABS
 # ---------------------------
-st.subheader("📊 Feature Importance")
-
-importance = pd.DataFrame({
-    "Feature": X.columns,
-    "Importance": model.feature_importances_
-}).sort_values(by="Importance", ascending=False)
-
-fig1, ax1 = plt.subplots()
-ax1.barh(importance["Feature"], importance["Importance"])
-ax1.invert_yaxis()
-st.pyplot(fig1)
+tab1, tab2, tab3, tab4 = st.tabs(["📥 Input", "📊 Analytics", "🗺️ Map", "🧠 Model"])
 
 # ---------------------------
-# DISTRIBUTION OF TARGET
+# TAB 1 INPUT
 # ---------------------------
-st.subheader("📈 Price Distribution")
-
-fig2, ax2 = plt.subplots()
-ax2.hist(y, bins=30)
-ax2.set_title("Distribution of House Prices")
-st.pyplot(fig2)
+with tab1:
+    st.subheader("Your House Parameters")
+    st.dataframe(df)
 
 # ---------------------------
-# CORRELATION HEATMAP
+# TAB 2 ANALYTICS
 # ---------------------------
-st.subheader("🔗 Correlation Matrix")
+with tab2:
+    colA, colB = st.columns(2)
 
-corr = X.corr()
+    with colA:
+        st.subheader("Price Distribution")
+        fig, ax = plt.subplots()
+        ax.hist(y, bins=30)
+        ax.axvline(prediction, linestyle="--")
+        st.pyplot(fig)
 
-fig3, ax3 = plt.subplots()
-cax = ax3.matshow(corr)
-plt.xticks(range(len(corr.columns)), corr.columns, rotation=90)
-plt.yticks(range(len(corr.columns)), corr.columns)
-fig3.colorbar(cax)
+    with colB:
+        st.subheader("Feature Importance")
 
-st.pyplot(fig3)
+        importance = pd.DataFrame({
+            "Feature": X.columns,
+            "Importance": model.feature_importances_
+        }).sort_values(by="Importance", ascending=True)
+
+        fig2, ax2 = plt.subplots()
+        ax2.barh(importance["Feature"], importance["Importance"])
+        st.pyplot(fig2)
 
 # ---------------------------
-# RAW DATA VIEW
+# TAB 3 MAP
 # ---------------------------
-if st.checkbox("Show raw dataset"):
-    st.subheader("Dataset")
-    st.write(X.head())
+with tab3:
+    st.subheader("Geographic Visualization")
+
+    map_data = X.copy()
+    map_data["price"] = y
+
+    st.map(map_data.rename(columns={
+        "Latitude": "lat",
+        "Longitude": "lon"
+    }))
 
 # ---------------------------
-# MODEL INSIGHT
+# TAB 4 MODEL INFO
 # ---------------------------
-st.subheader("🧠 Model Info")
+with tab4:
+    st.subheader("Model Explanation")
 
-st.write(f"""
-- Model: RandomForestRegressor  
-- Features: {X.shape[1]}  
-- Dataset size: {X.shape[0]} rows  
-""")
+    st.write("""
+    This model uses **Random Forest Regression**.
+
+    ✔ Combines multiple decision trees  
+    ✔ Captures complex relationships  
+    ✔ Works well for real estate data  
+
+    ### Key Factors:
+    - Median Income (most important)
+    - Location (Latitude/Longitude)
+    - Average Rooms
+    """)
+
+    st.subheader("Correlation Matrix")
+
+    corr = X.corr()
+    fig3, ax3 = plt.subplots()
+    cax = ax3.matshow(corr)
+    plt.xticks(range(len(corr.columns)), corr.columns, rotation=90)
+    plt.yticks(range(len(corr.columns)), corr.columns)
+    fig3.colorbar(cax)
+
+    st.pyplot(fig3)
+
+# ---------------------------
+# BONUS: COMPARE WITH DATASET
+# ---------------------------
+st.divider()
+st.subheader("📊 Compare Your House to Dataset")
+
+comparison = pd.DataFrame({
+    "Your House": df.iloc[0],
+    "Average": X.mean()
+})
+
+st.bar_chart(comparison)
