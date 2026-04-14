@@ -4,58 +4,126 @@ import matplotlib.pyplot as plt
 from sklearn.datasets import fetch_california_housing
 from sklearn.ensemble import RandomForestRegressor
 
-st.write("""
-# California House Price Prediction App
+# ---------------------------
+# CONFIG
+# ---------------------------
+st.set_page_config(page_title="House Price App", layout="wide")
 
-This app predicts the **California House Price**!
-""")
-st.write('---')
+st.title("🏠 California House Price Prediction App")
+st.markdown("Predict house prices using Machine Learning")
 
-# Load dataset
-housing = fetch_california_housing()
-X = pd.DataFrame(housing.data, columns=housing.feature_names)
-Y = pd.DataFrame(housing.target, columns=["PRICE"])
+# ---------------------------
+# LOAD DATA (with caching)
+# ---------------------------
+@st.cache_data
+def load_data():
+    housing = fetch_california_housing()
+    X = pd.DataFrame(housing.data, columns=housing.feature_names)
+    y = pd.Series(housing.target, name="PRICE")
+    return X, y
 
-# Sidebar
-st.sidebar.header('Specify Input Parameters')
+X, y = load_data()
+
+# ---------------------------
+# SIDEBAR INPUTS
+# ---------------------------
+st.sidebar.header("⚙️ Input Parameters")
 
 def user_input_features():
-    MedInc = st.sidebar.slider('MedInc (Median Income)', float(X.MedInc.min()), float(X.MedInc.max()), float(X.MedInc.mean()))
-    HouseAge = st.sidebar.slider('HouseAge', float(X.HouseAge.min()), float(X.HouseAge.max()), float(X.HouseAge.mean()))
-    AveRooms = st.sidebar.slider('AveRooms', float(X.AveRooms.min()), float(X.AveRooms.max()), float(X.AveRooms.mean()))
-    AveBedrms = st.sidebar.slider('AveBedrms', float(X.AveBedrms.min()), float(X.AveBedrms.max()), float(X.AveBedrms.mean()))
-    Population = st.sidebar.slider('Population', float(X.Population.min()), float(X.Population.max()), float(X.Population.mean()))
-    AveOccup = st.sidebar.slider('AveOccup', float(X.AveOccup.min()), float(X.AveOccup.max()), float(X.AveOccup.mean()))
-    Latitude = st.sidebar.slider('Latitude', float(X.Latitude.min()), float(X.Latitude.max()), float(X.Latitude.mean()))
-    Longitude = st.sidebar.slider('Longitude', float(X.Longitude.min()), float(X.Longitude.max()), float(X.Longitude.mean()))
-
-    data = {
-        'MedInc': MedInc,
-        'HouseAge': HouseAge,
-        'AveRooms': AveRooms,
-        'AveBedrms': AveBedrms,
-        'Population': Population,
-        'AveOccup': AveOccup,
-        'Latitude': Latitude,
-        'Longitude': Longitude
-    }
-    features = pd.DataFrame(data, index=[0])
-    return features
+    data = {}
+    for col in X.columns:
+        data[col] = st.sidebar.slider(
+            col,
+            float(X[col].min()),
+            float(X[col].max()),
+            float(X[col].mean())
+        )
+    return pd.DataFrame(data, index=[0])
 
 df = user_input_features()
 
-# Main panel
-st.header('Specified Input parameters')
-st.write(df)
-st.write('---')
+# ---------------------------
+# MODEL (cached)
+# ---------------------------
+@st.cache_resource
+def train_model():
+    model = RandomForestRegressor(n_estimators=100)
+    model.fit(X, y)
+    return model
 
-# Build model
-model = RandomForestRegressor()
-model.fit(X, Y.values.ravel())
+model = train_model()
 
-# Prediction
-prediction = model.predict(df)
+prediction = model.predict(df)[0]
 
-st.header('Prediction of House Price')
-st.write(prediction[0])
-st.write('---')
+# ---------------------------
+# MAIN LAYOUT
+# ---------------------------
+col1, col2 = st.columns(2)
+
+with col1:
+    st.subheader("📥 Input Data")
+    st.write(df)
+
+with col2:
+    st.subheader("💰 Prediction")
+
+    price_usd = prediction * 100000
+    st.success(f"Estimated price: ${price_usd:,.2f}")
+
+# ---------------------------
+# FEATURE IMPORTANCE
+# ---------------------------
+st.subheader("📊 Feature Importance")
+
+importance = pd.DataFrame({
+    "Feature": X.columns,
+    "Importance": model.feature_importances_
+}).sort_values(by="Importance", ascending=False)
+
+fig1, ax1 = plt.subplots()
+ax1.barh(importance["Feature"], importance["Importance"])
+ax1.invert_yaxis()
+st.pyplot(fig1)
+
+# ---------------------------
+# DISTRIBUTION OF TARGET
+# ---------------------------
+st.subheader("📈 Price Distribution")
+
+fig2, ax2 = plt.subplots()
+ax2.hist(y, bins=30)
+ax2.set_title("Distribution of House Prices")
+st.pyplot(fig2)
+
+# ---------------------------
+# CORRELATION HEATMAP
+# ---------------------------
+st.subheader("🔗 Correlation Matrix")
+
+corr = X.corr()
+
+fig3, ax3 = plt.subplots()
+cax = ax3.matshow(corr)
+plt.xticks(range(len(corr.columns)), corr.columns, rotation=90)
+plt.yticks(range(len(corr.columns)), corr.columns)
+fig3.colorbar(cax)
+
+st.pyplot(fig3)
+
+# ---------------------------
+# RAW DATA VIEW
+# ---------------------------
+if st.checkbox("Show raw dataset"):
+    st.subheader("Dataset")
+    st.write(X.head())
+
+# ---------------------------
+# MODEL INSIGHT
+# ---------------------------
+st.subheader("🧠 Model Info")
+
+st.write(f"""
+- Model: RandomForestRegressor  
+- Features: {X.shape[1]}  
+- Dataset size: {X.shape[0]} rows  
+""")
